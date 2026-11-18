@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const DEFAULT_PUBLIC_SUPABASE_URL = 'https://umqydufawjccmuqqqupu.supabase.co';
-const DEFAULT_PUBLIC_SUPABASE_KEY = 'sb_publishable_wnH3w58TBJ7iUjFQzrIwhw_1DuVRX_c';
+const DEFAULT_PUBLIC_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtcXlkdWZhd2pjY211cXFxdXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5ODI4NzcsImV4cCI6MjExMDU1ODg3N30.Vg22mCkJ93u8QIf0dXt_w_95A_Ugnvt-Gw5QN8yDDIEhw_1DuVRX_c';
 
 let cachedClient: SupabaseClient | null = null;
 let clientPromise: Promise<SupabaseClient | null> | null = null;
