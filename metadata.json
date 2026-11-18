@@ -1,0 +1,6 @@
+{
+  "name": "KarsaPlay — Top-Up Game & Jasa Joki Mobile Legends",
+  "description": "Platform e-commerce resmi untuk top-up diamond, UC, Genesis Crystals, dan jasa joki rank Mobile Legends dari Grandmaster hingga Immortal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
