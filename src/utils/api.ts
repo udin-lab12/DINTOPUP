@@ -92,6 +92,131 @@ export interface RegisterResult {
   user: User;
 }
 
+function mapSupabaseProfileToUser(
+  row: Record<string, unknown> | null | undefined,
+  fallback: {
+    id: string;
+    email: string;
+    name?: string;
+    whatsapp?: string;
+  }
+): User {
+  const email = String(row?.email ?? fallback.email).trim().toLowerCase();
+  const rawName = String(
+    row?.name ?? row?.full_name ?? fallback.name ?? (email.split('@')[0] || 'Pelanggan')
+  ).trim();
+  const rawPhone = String(row?.phone ?? row?.whatsapp ?? fallback.whatsapp ?? '').trim();
+  const rawRole = String(row?.role ?? 'user').toLowerCase();
+  const rawId = row?.id;
+
+  return {
+    id:
+      typeof rawId === 'number' || (typeof rawId === 'string' && rawId.trim().length > 0)
+        ? (rawId as number | string)
+        : fallback.id,
+    name: rawName || 'Pelanggan',
+    email,
+    role: rawRole === 'admin' ? 'admin' : 'user',
+    whatsapp: rawPhone,
+    createdAt: String(row?.created_at ?? new Date().toISOString()),
+  };
+}
+
+async function fetchOrSyncSupabaseUserProfile(
+  authUser: {
+    id: string;
+    email?: string;
+    user_metadata?: Record<string, unknown>;
+  },
+  overrides?: {
+    name?: string;
+    whatsapp?: string;
+  }
+): Promise<User> {
+  const email = (authUser.email ?? '').trim().toLowerCase();
+  const meta = authUser.user_metadata ?? {};
+  const fallbackName = String(
+    overrides?.name ?? meta.name ?? meta.full_name ?? (email.split('@')[0] || 'Pelanggan')
+  ).trim();
+  const fallbackWhatsapp = String(overrides?.whatsapp ?? meta.phone ?? meta.whatsapp ?? '').trim();
+
+  const supabase = await getSupabaseClient();
+  if (!supabase) {
+    return mapSupabaseProfileToUser(null, {
+      id: authUser.id,
+      email,
+      name: fallbackName,
+      whatsapp: fallbackWhatsapp,
+    });
+  }
+
+  // Coba baca profil user yang sudah ada berdasarkan email atau auth_id
+  if (email) {
+    const { data: byEmail } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+    if (byEmail) {
+      return mapSupabaseProfileToUser(byEmail as Record<string, unknown>, {
+        id: authUser.id,
+        email,
+        name: fallbackName,
+        whatsapp: fallbackWhatsapp,
+      });
+    }
+  }
+
+  const { data: byAuthId } = await supabase
+    .from('users')
+    .select('*')
+    .eq('auth_id', authUser.id)
+    .maybeSingle();
+  if (byAuthId) {
+    return mapSupabaseProfileToUser(byAuthId as Record<string, unknown>, {
+      id: authUser.id,
+      email,
+      name: fallbackName,
+      whatsapp: fallbackWhatsapp,
+    });
+  }
+
+  // Upsert profil baru tanpa mengirim id agar kolom id int8 terisi otomatis oleh database
+  if (email) {
+    const { data: upserted } = await supabase
+      .from('users')
+      .upsert(
+        {
+          auth_id: authUser.id,
+          email,
+          name: fallbackName,
+          full_name: fallbackName,
+          phone: fallbackWhatsapp,
+          role: 'user',
+        },
+        { onConflict: 'email' }
+      )
+      .select('*')
+      .maybeSingle();
+
+    if (upserted) {
+      return mapSupabaseProfileToUser(upserted as Record<string, unknown>, {
+        id: authUser.id,
+        email,
+        name: fallbackName,
+        whatsapp: fallbackWhatsapp,
+      });
+    }
+  }
+
+  return mapSupabaseProfileToUser(null, {
+    id: authUser.id,
+    email,
+    name: fallbackName,
+    whatsapp: fallbackWhatsapp,
+  });
+}
+
 export async function registerAccount(payload: {
   name: string;
   email: string;
@@ -103,64 +228,58 @@ export async function registerAccount(payload: {
   const whatsapp = payload.whatsapp.trim();
 
   const supabase = await getSupabaseClient();
-  if (supabase) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: payload.password,
-      options: {
-        data: {
-          name,
-          full_name: name,
-          phone: whatsapp,
-          whatsapp,
-        },
-      },
-    });
-
-    if (error) {
-      throw new Error(mapAuthErrorMessage(error.message));
-    }
-
-    if (data.user) {
-      // Jangan kirim field id (int8 auto-increment); simpan data.user.id ke auth_id
-      await supabase.from('users').upsert(
-        {
-          auth_id: data.user.id,
-          email,
-          name,
-          full_name: name,
-          phone: whatsapp,
-          role: 'user',
-        },
-        { onConflict: 'email' }
-      );
-
-      const synced = await apiRequest<{ token: string; user: User }>('/api/auth/register-sync', {
-        method: 'POST',
-        body: JSON.stringify({
-          authId: data.user.id,
-          email,
-          name,
-          whatsapp,
-          accessToken: data.session?.access_token ?? '',
-        }),
-      });
-      setStoredToken(synced.token);
-      return synced;
-    }
+  if (!supabase) {
+    throw new Error('Koneksi Supabase belum tersedia. Silakan muat ulang halaman.');
   }
 
-  const result = await apiRequest<RegisterResult>('/api/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({
-      name,
-      email,
-      password: payload.password,
-      whatsapp,
-    }),
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: payload.password,
+    options: {
+      data: {
+        name,
+        full_name: name,
+        phone: whatsapp,
+        whatsapp,
+      },
+    },
   });
-  setStoredToken(result.token);
-  return result;
+
+  if (error) {
+    throw new Error(mapAuthErrorMessage(error.message));
+  }
+
+  if (!data.user) {
+    throw new Error('Pendaftaran berhasil dikirim, namun data akun tidak dikembalikan oleh Supabase.');
+  }
+
+  // Simpan profil user ke tabel public.users tanpa field id (id int8 diisi otomatis oleh database)
+  const { data: profileRow } = await supabase
+    .from('users')
+    .upsert(
+      {
+        auth_id: data.user.id,
+        email,
+        name,
+        full_name: name,
+        phone: whatsapp,
+        role: 'user',
+      },
+      { onConflict: 'email' }
+    )
+    .select('*')
+    .maybeSingle();
+
+  const user = mapSupabaseProfileToUser(profileRow as Record<string, unknown> | null, {
+    id: data.user.id,
+    email,
+    name,
+    whatsapp,
+  });
+
+  const token = data.session?.access_token ?? '';
+  setStoredToken(token || null);
+  return { token, user };
 }
 
 export async function loginAccount(payload: {
@@ -170,50 +289,60 @@ export async function loginAccount(payload: {
   const email = payload.email.trim().toLowerCase();
   const supabase = await getSupabaseClient();
 
-  if (supabase) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password: payload.password,
-    });
-
-    if (!error && data.session?.access_token) {
-      const exchanged = await apiRequest<{ token: string; user: User }>(
-        '/api/auth/supabase-session',
-        {
-          method: 'POST',
-          body: JSON.stringify({ accessToken: data.session.access_token }),
-        }
-      );
-      setStoredToken(exchanged.token);
-      return exchanged;
-    }
-
-    if (error && error.message.toLowerCase().includes('email not confirmed')) {
-      throw new Error(mapAuthErrorMessage(error.message));
-    }
+  if (!supabase) {
+    throw new Error('Koneksi Supabase belum tersedia. Silakan muat ulang halaman.');
   }
 
-  const result = await apiRequest<{ token: string; user: User }>('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password: payload.password }),
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: payload.password,
   });
-  setStoredToken(result.token);
-  return result;
+
+  if (error) {
+    throw new Error(mapAuthErrorMessage(error.message));
+  }
+
+  if (!data.user) {
+    throw new Error('Akun tidak ditemukan. Silakan periksa kembali email dan kata sandi Anda.');
+  }
+
+  const user = await fetchOrSyncSupabaseUserProfile({
+    id: data.user.id,
+    email: data.user.email ?? email,
+    user_metadata: (data.user.user_metadata ?? {}) as Record<string, unknown>,
+  });
+
+  const token = data.session?.access_token ?? '';
+  setStoredToken(token || null);
+  return { token, user };
 }
 
 export async function logoutAccount(): Promise<void> {
   try {
     const supabase = await getSupabaseClient();
     await supabase?.auth.signOut().catch(() => {});
-    await apiRequest<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
   } finally {
     setStoredToken(null);
   }
 }
 
-export async function fetchCurrentUser(): Promise<User> {
-  const result = await apiRequest<{ user: User }>('/api/auth/me');
-  return result.user;
+export async function fetchCurrentUser(): Promise<User | null> {
+  const supabase = await getSupabaseClient();
+  if (!supabase) return null;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  if (!session?.user) {
+    setStoredToken(null);
+    return null;
+  }
+
+  setStoredToken(session.access_token || null);
+  return fetchOrSyncSupabaseUserProfile({
+    id: session.user.id,
+    email: session.user.email,
+    user_metadata: (session.user.user_metadata ?? {}) as Record<string, unknown>,
+  });
 }
 
 function mapSupabaseProductRow(row: Record<string, unknown>): Product {

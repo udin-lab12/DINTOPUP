@@ -82,9 +82,18 @@ async function extractUserFromHeader(req: Request): Promise<User | null> {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return null;
   const token = header.slice(7).trim();
+  if (!token) return null;
+
   const payload = verifyToken(token);
-  if (!payload) return null;
-  return findUserById(payload.userId);
+  if (payload) {
+    return findUserById(payload.userId);
+  }
+
+  try {
+    return await resolveUserFromSupabaseAccessToken(token);
+  } catch {
+    return null;
+  }
 }
 
 async function requireAuth(

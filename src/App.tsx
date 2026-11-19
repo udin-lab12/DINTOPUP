@@ -18,7 +18,6 @@ import { UserOrdersView } from './components/UserOrdersView.tsx';
 import {
   fetchCurrentUser,
   fetchProducts,
-  getStoredToken,
   logoutAccount,
   setStoredToken,
 } from './utils/api.ts';
@@ -118,11 +117,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) {
-      setAuthReady(true);
-      return;
-    }
     fetchCurrentUser()
       .then((currentUser) => {
         setUser(currentUser);
