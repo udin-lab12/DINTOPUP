@@ -67,13 +67,21 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
     headers,
   });
 
-  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const contentType = response.headers.get('content-type') ?? '';
+  const data = contentType.includes('application/json')
+    ? ((await response.json().catch(() => ({}))) as Record<string, unknown>)
+    : {};
+
   if (!response.ok) {
     const message =
       typeof data.error === 'string' && data.error.length > 0
         ? data.error
         : `Permintaan gagal (${response.status}).`;
     throw new Error(message);
+  }
+
+  if (!contentType.includes('application/json')) {
+    throw new Error('Respon server bukan JSON. Pastikan backend API sedang berjalan.');
   }
 
   return data as T;
@@ -208,10 +216,63 @@ export async function fetchCurrentUser(): Promise<User> {
   return result.user;
 }
 
+function mapSupabaseProductRow(row: Record<string, unknown>): Product {
+  return {
+    id: Number(row.id),
+    name: String(row.name ?? ''),
+    game: (String(row.game ?? 'Mobile Legends') as GameName),
+    category: (String(row.category ?? 'topup') as ProductCategory),
+    rankTier: String(row.rank_tier ?? ''),
+    price: Number(row.price ?? 0),
+    unitLabel: String(row.unit_label ?? ''),
+    description: String(row.description ?? ''),
+    imageUrl: String(row.image_url ?? ''),
+    isPopular: Boolean(row.is_popular),
+    isActive: row.is_active !== false,
+    createdAt: String(row.created_at ?? ''),
+  };
+}
+
 export async function fetchProducts(includeInactive = false): Promise<Product[]> {
-  const query = includeInactive ? '?includeInactive=true' : '';
-  const result = await apiRequest<{ products: Product[] }>(`/api/products${query}`);
-  return result.products;
+  try {
+    const query = includeInactive ? '?includeInactive=true' : '';
+    const token = getStoredToken();
+    const headers = new Headers();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    const response = await fetch(`/api/products${query}`, { headers });
+    const contentType = response.headers.get('content-type') ?? '';
+    if (response.ok && contentType.includes('application/json')) {
+      const result = (await response.json().catch(() => ({}))) as { products?: unknown };
+      if (Array.isArray(result.products)) {
+        return result.products as Product[];
+      }
+    }
+  } catch {
+    // Fallback ke Supabase publik jika endpoint backend tidak tersedia
+  }
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    let sbQuery = supabase
+      .from('products')
+      .select('*')
+      .order('category', { ascending: true })
+      .order('game', { ascending: true })
+      .order('price', { ascending: true });
+
+    if (!includeInactive) {
+      sbQuery = sbQuery.eq('is_active', true);
+    }
+
+    const { data, error } = await sbQuery;
+    if (!error && Array.isArray(data)) {
+      return data.map((row) => mapSupabaseProductRow(row as Record<string, unknown>));
+    }
+  }
+
+  return [];
 }
 
 export interface ProductPayload {
@@ -249,8 +310,8 @@ export async function deleteProduct(id: number): Promise<void> {
 }
 
 export async function fetchOrders(): Promise<Order[]> {
-  const result = await apiRequest<{ orders: Order[] }>('/api/orders');
-  return result.orders;
+  const result = await apiRequest<{ orders?: Order[] }>('/api/orders');
+  return Array.isArray(result?.orders) ? result.orders : [];
 }
 
 export async function createOrder(payload: {

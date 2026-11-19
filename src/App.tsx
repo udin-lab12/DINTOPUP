@@ -96,8 +96,9 @@ export default function App() {
     setProductsError('');
     try {
       const data = await fetchProducts(false);
-      setProducts(data);
+      setProducts(Array.isArray(data) ? data : []);
     } catch (err) {
+      setProducts([]);
       setProductsError(err instanceof Error ? err.message : 'Gagal memuat katalog produk.');
     } finally {
       setProductsLoading(false);
@@ -137,20 +138,22 @@ export default function App() {
 
   const topupProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return products.filter((p) => {
+    const safeProducts = Array.isArray(products) ? products : [];
+    return safeProducts.filter((p) => {
       if (p.category !== 'topup') return false;
       if (selectedGame !== 'all' && p.game !== selectedGame) return false;
       if (!q) return true;
       return (
-        p.name.toLowerCase().includes(q) ||
-        p.game.toLowerCase().includes(q) ||
-        p.unitLabel.toLowerCase().includes(q)
+        (p.name ?? '').toLowerCase().includes(q) ||
+        (p.game ?? '').toLowerCase().includes(q) ||
+        (p.unitLabel ?? '').toLowerCase().includes(q)
       );
     });
   }, [products, selectedGame, searchQuery]);
 
   const jokiProducts = useMemo(() => {
-    return products
+    const safeProducts = Array.isArray(products) ? products : [];
+    return safeProducts
       .filter((p) => p.category === 'joki')
       .sort((a, b) => (RANK_ORDER[a.rankTier] ?? 99) - (RANK_ORDER[b.rankTier] ?? 99));
   }, [products]);
@@ -425,12 +428,12 @@ export default function App() {
                   <div className="mt-3">
                     <p className="font-display text-base font-bold text-white">Semua Game</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {products.filter((p) => p.category === 'topup').length} paket tersedia
+                      {(products ?? []).filter((p) => p.category === 'topup').length} paket tersedia
                     </p>
                   </div>
                 </button>
 
-                {GAMES_LIST.map((game) => {
+                {(GAMES_LIST ?? []).map((game) => {
                   const meta = GAME_META[game];
                   const active = selectedGame === game;
                   return (
@@ -512,7 +515,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {topupProducts.map((product) => (
+                  {(topupProducts ?? []).map((product) => (
                     <article
                       key={product.id}
                       className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#121620] transition-transform duration-150 hover:-translate-y-0.5 hover:border-white/20"
@@ -635,7 +638,7 @@ export default function App() {
                 </div>
 
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {jokiProducts.map((joki) => (
+                  {(jokiProducts ?? []).map((joki) => (
                     <article
                       key={joki.id}
                       className="flex flex-col justify-between rounded-2xl border border-white/10 bg-[#121620] p-5 hover:border-amber-400/50 transition-colors"

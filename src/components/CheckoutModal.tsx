@@ -131,8 +131,8 @@ function QrisQrCode() {
         aria-label="Kode QRIS DINTOPUP"
       >
         <rect width={QR_SIZE} height={QR_SIZE} fill="#FFFFFF" />
-        {QRIS_MATRIX.map((row, r) =>
-          row.map((filled, c) =>
+        {(QRIS_MATRIX ?? []).map((row, r) =>
+          (row ?? []).map((filled, c) =>
             filled ? (
               <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#0F172A" />
             ) : null
@@ -676,7 +676,7 @@ export function CheckoutModal({
                   Pilih Metode Pembayaran
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {PAYMENT_METHODS.map((method) => (
+                  {(PAYMENT_METHODS ?? []).map((method) => (
                     <button
                       key={method}
                       type="button"

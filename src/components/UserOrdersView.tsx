@@ -43,7 +43,7 @@ export function UserOrdersView({ onBrowseStore }: UserOrdersViewProps) {
     setError('');
     try {
       const data = await fetchOrders();
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memuat riwayat transaksi.');
     } finally {
@@ -57,14 +57,15 @@ export function UserOrdersView({ onBrowseStore }: UserOrdersViewProps) {
 
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return orders.filter((order) => {
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    return safeOrders.filter((order) => {
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
       if (!q) return true;
       return (
-        order.orderCode.toLowerCase().includes(q) ||
-        order.productName.toLowerCase().includes(q) ||
-        order.game.toLowerCase().includes(q) ||
-        order.targetAccountId.toLowerCase().includes(q)
+        (order.orderCode ?? '').toLowerCase().includes(q) ||
+        (order.productName ?? '').toLowerCase().includes(q) ||
+        (order.game ?? '').toLowerCase().includes(q) ||
+        (order.targetAccountId ?? '').toLowerCase().includes(q)
       );
     });
   }, [orders, searchQuery, statusFilter]);
@@ -192,7 +193,7 @@ export function UserOrdersView({ onBrowseStore }: UserOrdersViewProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {filteredOrders.map((order) => (
+                {(filteredOrders ?? []).map((order) => (
                   <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="px-4 py-3.5 align-top">
                       <p className="font-mono text-xs font-semibold text-amber-400">
@@ -239,7 +240,7 @@ export function UserOrdersView({ onBrowseStore }: UserOrdersViewProps) {
 
           {/* Mobile Card List */}
           <div className="mt-6 space-y-3 lg:hidden">
-            {filteredOrders.map((order) => (
+            {(filteredOrders ?? []).map((order) => (
               <div
                 key={order.id}
                 className="rounded-xl border border-white/10 bg-[#121620] p-4 space-y-3"

@@ -78,9 +78,9 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
         fetchOrders(),
         fetchAdminStats(),
       ]);
-      setProducts(productsData);
-      setOrders(ordersData);
-      setStats(statsData);
+      setProducts(Array.isArray(productsData) ? productsData : []);
+      setOrders(Array.isArray(ordersData) ? ordersData : []);
+      setStats(statsData ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memuat data panel admin.');
     } finally {
@@ -94,25 +94,27 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
 
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return products.filter((p) => {
+    const safeProducts = Array.isArray(products) ? products : [];
+    return safeProducts.filter((p) => {
       if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
       if (!q) return true;
       return (
-        p.name.toLowerCase().includes(q) ||
-        p.game.toLowerCase().includes(q) ||
-        p.rankTier.toLowerCase().includes(q)
+        (p.name ?? '').toLowerCase().includes(q) ||
+        (p.game ?? '').toLowerCase().includes(q) ||
+        (p.rankTier ?? '').toLowerCase().includes(q)
       );
     });
   }, [products, searchQuery, categoryFilter]);
 
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return orders.filter((o) => {
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    return safeOrders.filter((o) => {
       if (!q) return true;
       return (
-        o.orderCode.toLowerCase().includes(q) ||
-        o.productName.toLowerCase().includes(q) ||
-        o.game.toLowerCase().includes(q) ||
+        (o.orderCode ?? '').toLowerCase().includes(q) ||
+        (o.productName ?? '').toLowerCase().includes(q) ||
+        (o.game ?? '').toLowerCase().includes(q) ||
         (o.userName ?? '').toLowerCase().includes(q) ||
         (o.userEmail ?? '').toLowerCase().includes(q)
       );
@@ -183,7 +185,7 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
     setUpdatingOrderId(orderId);
     try {
       const updated = await updateOrderStatus(orderId, status);
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
+      setOrders((prev) => (prev ?? []).map((o) => (o.id === orderId ? updated : o)));
       const refreshedStats = await fetchAdminStats();
       setStats(refreshedStats);
     } catch (err) {
@@ -257,7 +259,7 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Kelola Produk ({products.length})</span>
+            <span>Kelola Produk ({(products ?? []).length})</span>
           </button>
           <button
             type="button"
@@ -269,7 +271,7 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
             }`}
           >
             <ShoppingCart className="w-4 h-4" />
-            <span>Semua Pesanan ({orders.length})</span>
+            <span>Semua Pesanan ({(orders ?? []).length})</span>
           </button>
         </div>
 
@@ -344,7 +346,7 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {filteredProducts.map((product) => (
+              {(filteredProducts ?? []).map((product) => (
                 <tr key={product.id} className="hover:bg-white/[0.02] transition-colors">
                   <td className="px-4 py-3.5">
                     <p className="font-medium text-white">{product.name}</p>
@@ -414,7 +416,7 @@ export function AdminDashboardView({ onProductsChanged }: AdminDashboardViewProp
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {filteredOrders.map((order) => {
+              {(filteredOrders ?? []).map((order) => {
                 const statusMeta = ORDER_STATUS_META[order.status];
                 return (
                   <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
